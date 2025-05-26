@@ -1,6 +1,184 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using BakerySimulation;
+
+Boss boss = new Boss();
+Baker baker = boss.HireBaker();
+Cashier cashier = boss.HireCashier();
+
+Client client1 = new Client();
+Client client2 = new Client();
+
+
+
+// Склад с доступной продукцией, ключ - тип продукта
+Dictionary<string, Production> storage = new Dictionary<string, Production>();
+
+// Дефолтная продукция на складе (если пользователь ничего не приготовит)
+if (!storage.ContainsKey("1")) storage["1"] = new Bun(price: 50, quantity: 20);
+if (!storage.ContainsKey("2")) storage["2"] = new Bread(price: 100, quantity: 15);
+if (!storage.ContainsKey("3")) storage["3"] = new Meal(price: 150, quantity: 10);
+if (!storage.ContainsKey("4")) storage["4"] = new Drink(price: 70, quantity: 25);
+
+
+while (true)
+{
+    try
+    {
+        Console.WriteLine("\n1. Приготовить продукцию");
+        Console.WriteLine("2. Добавить товар в корзину");
+        Console.WriteLine("3. Перейти к оплате");
+        Console.WriteLine("4. Выйти");
+        Console.Write("Выберите действие: ");
+        string choice = Console.ReadLine();
+
+        switch (choice)
+        {
+            case "1":
+                PrepareProduct(baker, storage);
+                break;
+
+            case "2":
+                AddProductToCart(client1, storage);
+                break;
+
+            case "3":
+                if (client1.ShoppingBag.Count == 0)
+                    Console.WriteLine("Корзина пуста.");
+                else
+                    client1.Checkout(cashier);
+                break;
+
+            case "4":
+                Console.WriteLine("Выход из программы");
+                return;
+
+            default:
+                Console.WriteLine("Неправильный ввод");
+                break;
+        }
+    }
+    catch (FormatException)
+    {
+        Console.WriteLine("Ошибка: введено некорректное число.");
+    }
+    catch (OverflowException)
+    {
+        Console.WriteLine("Ошибка: введённое число слишком большое.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Произошла ошибка: {ex.Message}");
+    }
+}
+
+void PrepareProduct(Baker baker, Dictionary<string, Production> storage)
+{
+    Console.WriteLine("\nВыберите продукт, который хотите приготовить:");
+    Console.WriteLine("1 - Булочка, 2 - Хлеб, 3 - Еда с собой, 4 - Напиток");
+    Console.Write("Выберите продукцию: ");
+    string productChoice = Console.ReadLine();
+
+    Console.Write("Введите количество: ");
+    if (!int.TryParse(Console.ReadLine(), out int quantity) || quantity <= 0)
+    {
+        Console.WriteLine("Неверное количество");
+        return;
+    }
+
+    Console.Write("Введите цену за единицу: ");
+    if (!int.TryParse(Console.ReadLine(), out int price) || price <= 0)
+    {
+        Console.WriteLine("Неверная цена");
+        return;
+    }
+
+    Dictionary<string, string> productNames = new Dictionary<string, string>
+            {
+                {"1", "Булочка"},
+                {"2", "Хлеб"},
+                {"3", "Еда с собой"},
+                {"4", "Напиток"}
+            };
+
+    Dictionary<string, Type> productTypes = new Dictionary<string, Type>
+            {
+                {"1", typeof(Bun)},
+                {"2", typeof(Bread)},
+                {"3", typeof(Meal)},
+                {"4", typeof(Drink)}
+            };
+
+    if (productTypes.TryGetValue(key: productChoice, out Type? value))
+    {
+        Production product = baker.CookProduct(value, quantity, price);
+        if (storage.ContainsKey(productChoice))
+        {
+            storage[productChoice].Quantity += quantity;
+        }
+        else
+        {
+            storage[productChoice] = product;
+        }
+        Console.WriteLine($"Приготовлено {quantity} шт. {productNames[productChoice]}, по цене {price} руб/шт.");
+    }
+    else
+    {
+        Console.WriteLine("Неверный ввод");
+    }
+}
+
+void AddProductToCart(Client client, Dictionary<string, Production> storage)
+{
+    if (storage.Count == 0)
+    {
+        Console.WriteLine("На складе нет продукции.");
+        return;
+    }
+
+    Console.WriteLine("\nВыберите продукт для покупки:");
+    Console.WriteLine("1 - Булочка, 2 - Хлеб, 3 - Еда с собой, 4 - Напиток");
+    Console.Write("Номер продукции: ");
+    string productChoice = Console.ReadLine();
+
+    if (!storage.TryGetValue(productChoice, out Production? productInStorage))
+    {
+        Console.WriteLine("Такого продукта нет на складе.");
+        return;
+    }
+
+    Console.Write("Количество продукции: ");
+    if (!int.TryParse(Console.ReadLine(), out int quantityClient) || quantityClient <= 0)
+    {
+        Console.WriteLine("Неверное количество");
+        return;
+    }
+
+    if (productInStorage.Quantity < quantityClient)
+    {
+        Console.WriteLine($"Недостаточно товара на складе. Доступно: {productInStorage.Quantity}");
+        return;
+    }
+
+    productInStorage.Quantity -= quantityClient;
+
+    client.AddToShoppingBag(new Production(productInStorage.Name, productInStorage.Price, quantityClient), quantityClient);
+
+    Console.WriteLine($"Добавлено в корзину {quantityClient} шт. {productInStorage.Name}, по цене {productInStorage.Price} руб/шт.");
+
+    if (productInStorage.Quantity == 0)
+    {
+        storage.Remove(productChoice);
+    }
+
+    Console.WriteLine("Текущее наличие на складе:");
+    foreach (var kv in storage)
+    {
+        Console.WriteLine($"{kv.Key} - {kv.Value.Name}: {kv.Value.Quantity} шт. по {kv.Value.Price} руб/шт.");
+    }
+
+}
 
 namespace BakerySimulation
 {
@@ -111,6 +289,22 @@ namespace BakerySimulation
             ShoppingBag.Add((product, quantity));
         }
 
+        // Какие товары купил клиент
+        public void ShowShoppingBag()
+        {
+            if (ShoppingBag.Count == 0)
+            {
+                Console.WriteLine("Корзина пуста.");
+                return;
+            }
+
+            Console.WriteLine("Вы купили:");
+            foreach (var (product, quantity) in ShoppingBag)
+            {
+                Console.WriteLine($"- {product.Name}: {quantity} шт. по {product.Price} руб/шт.");
+            }
+        }
+
         // Оплатить товары через кассира
         public void Checkout(Cashier cashier)
         {
@@ -123,9 +317,11 @@ namespace BakerySimulation
             {
                 Money -= totalCost;
                 Console.WriteLine($"Общая стоимость покупок {totalCost}, денег осталось - {Money}");
+                ShowShoppingBag();  // Показываем что куплено
                 ShoppingBag.Clear(); // Очистить корзину после оплаты
             }
         }
+
     }
 
     // Базовый класс для продукции
@@ -168,153 +364,6 @@ namespace BakerySimulation
     {
         public Drink(int price, int quantity) : base("Напитки", price, quantity)
         {
-        }
-    }
-
-    class Program
-    {
-        static void Main(string[] args)
-        {
-            Boss boss = new Boss();
-            Baker baker = boss.HireBaker();
-            Cashier cashier = boss.HireCashier();
-
-            Client client1 = new Client();
-            Client client2 = new Client();
-
-            Dictionary<string, Production> storage = new Dictionary<string, Production>();
-
-            while (true)
-            {
-                Console.WriteLine("\n1. Приготовить продукцию");
-                Console.WriteLine("2. Добавить товар в корзину");
-                Console.WriteLine("3. Перейти к оплате");
-                Console.WriteLine("4. Выйти");
-                Console.Write("Выберите действие: ");
-                string choice = Console.ReadLine();
-
-                if (choice == "1")
-                {
-                    Console.WriteLine("\nВыберите продукт, который хотите приготовить:");
-                    Console.WriteLine("1 - Булочка, 2 - Хлеб, 3 - Еда с собой, 4 - Напиток");
-                    Console.Write("Выберите продукцию: ");
-                    string productChoice = Console.ReadLine();
-
-                    Console.Write("Введите количество: ");
-                    if (!int.TryParse(Console.ReadLine(), out int quantity) || quantity <= 0)
-                    {
-                        Console.WriteLine("Неверное количество");
-                        continue;
-                    }
-
-                    Console.Write("Введите цену за единицу: ");
-                    if (!int.TryParse(Console.ReadLine(), out int price) || price <= 0)
-                    {
-                        Console.WriteLine("Неверная цена");
-                        continue;
-                    }
-
-                    Dictionary<string, string> productNames = new Dictionary<string, string>
-                    {
-                        {"1", "Булочка"},
-                        {"2", "Хлеб"},
-                        {"3", "Еда с собой"},
-                        {"4", "Напиток"}
-                    };
-
-                    Dictionary<string, Type> productTypes = new Dictionary<string, Type>
-                    {
-                        {"1", typeof(Bun)},
-                        {"2", typeof(Bread)},
-                        {"3", typeof(Meal)},
-                        {"4", typeof(Drink)}
-                    };
-
-                    if (productTypes.ContainsKey(productChoice))
-                    {
-                        Production product = baker.CookProduct(productTypes[productChoice], quantity, price);
-                        if (storage.ContainsKey(productChoice))
-                        {
-                            // Увеличить количество, если продукт уже есть на складе
-                            storage[productChoice].Quantity += quantity;
-                        }
-                        else
-                        {
-                            storage[productChoice] = product;
-                        }
-                        Console.WriteLine($"Приготовлено {quantity} шт. {productNames[productChoice]}, по цене {price} руб/шт.");
-                    }
-                    else
-                    {
-                        Console.WriteLine("Неверный ввод");
-                    }
-                }
-                else if (choice == "2")
-                {
-                    if (storage.Count == 0)
-                    {
-                        Console.WriteLine("На складе нет продукции.");
-                        continue;
-                    }
-
-                    Console.WriteLine("\nВыберите продукт для покупки:");
-                    Console.WriteLine("1 - Булочка, 2 - Хлеб, 3 - Еда с собой, 4 - Напиток");
-                    Console.Write("Номер продукции: ");
-                    string productChoice = Console.ReadLine();
-
-                    if (!storage.ContainsKey(productChoice))
-                    {
-                        Console.WriteLine("Такого продукта нет на складе.");
-                        continue;
-                    }
-
-                    Console.Write("Количество продукции: ");
-                    if (!int.TryParse(Console.ReadLine(), out int quantityClient) || quantityClient <= 0)
-                    {
-                        Console.WriteLine("Неверное количество");
-                        continue;
-                    }
-
-                    Production productInStorage = storage[productChoice];
-                    if (productInStorage.Quantity < quantityClient)
-                    {
-                        Console.WriteLine($"Недостаточно товара на складе. Доступно: {productInStorage.Quantity}");
-                        continue;
-                    }
-
-                    // Уменьшить количество товара на складе
-                    productInStorage.Quantity -= quantityClient;
-
-                    // Добавить товар в корзину клиента
-                    client1.AddToShoppingBag(new Production(productInStorage.Name, productInStorage.Price, quantityClient), quantityClient);
-
-                    Console.WriteLine($"Добавлено в корзину {quantityClient} шт. {productInStorage.Name}, по цене {productInStorage.Price} руб/шт.");
-
-                    // Удалить продукт со склада, если количество стало 0
-                    if (productInStorage.Quantity == 0)
-                    {
-                        storage.Remove(productChoice);
-                    }
-                }
-                else if (choice == "3")
-                {
-                    if (client1.ShoppingBag.Count == 0)
-                    {
-                        Console.WriteLine("Корзина пуста.");
-                        continue;
-                    }
-                    client1.Checkout(cashier);
-                }
-                else if (choice == "4")
-                {
-                    Console.WriteLine("Выход из программы");
-                    break;
-                }
-                else
-                {
-                    Console.WriteLine("Неправильный ввод");
-                }
-            }
         }
     }
 }
