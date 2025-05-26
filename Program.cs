@@ -182,7 +182,6 @@ namespace BakerySimulation
             Client client1 = new Client();
             Client client2 = new Client();
 
-            // Склад с доступной продукцией, ключ - тип продукта
             Dictionary<string, Production> storage = new Dictionary<string, Production>();
 
             while (true)
